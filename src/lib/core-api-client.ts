@@ -63,6 +63,53 @@ export type LeaderboardEntry = {
   rank?: number | null;
 };
 
+export type TradeSignal = {
+  id: string;
+  traderProfileId: string;
+  marketId: string;
+  side: "YES" | "NO";
+  thesis: string;
+  convictionLevel: number | null;
+  source: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Position = {
+  id: string;
+  userId: string;
+  marketId: string;
+  side: "YES" | "NO";
+  quantity: string;
+  averageEntryPrice: string | null;
+  observedMarketPrice?: string | null;
+  observedMarketPriceSource?: string | null;
+  observedMarketPriceAt?: string | null;
+  status: string;
+  openedAt: string | null;
+  closedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CopyTrade = {
+  id: string;
+  followerId: string;
+  sourcePositionId: string;
+  sourceSignalId: string | null;
+  requestedQuantity: string;
+  executedQuantity: string | null;
+  executionPrice: string | null;
+  observedMarketPrice?: string | null;
+  resultingPositionId: string | null;
+  status: string;
+  externalOrderId: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 type ApiSuccess<TData> = {
   ok: true;
   data: TData;
@@ -132,6 +179,61 @@ export class CoreApiClient {
     );
 
     return "market" in response && response.market ? response.market : (response as Market);
+  }
+
+  async createTradeSignal(input: {
+    traderProfileId: string;
+    marketId: string;
+    side: "YES" | "NO";
+    thesis: string;
+  }) {
+    const response = await this.request<{ signal?: TradeSignal } | TradeSignal>("/signals", {
+      method: "POST",
+      body: JSON.stringify({
+        traderProfileId: input.traderProfileId,
+        marketId: input.marketId,
+        side: input.side,
+        thesis: input.thesis,
+        source: "TELEGRAM",
+      }),
+    });
+
+    return "signal" in response && response.signal ? response.signal : (response as TradeSignal);
+  }
+
+  async listMarketSignals(marketId: string) {
+    const response = await this.request<{ signals?: TradeSignal[] } | TradeSignal[]>(
+      "/markets/" + encodeURIComponent(marketId) + "/signals",
+    );
+
+    return Array.isArray(response) ? response : (response.signals ?? []);
+  }
+
+  async listUserPositions(userId: string) {
+    const response = await this.request<{ positions?: Position[] } | Position[]>(
+      "/users/" + encodeURIComponent(userId) + "/positions",
+    );
+
+    return Array.isArray(response) ? response : (response.positions ?? []);
+  }
+
+  async createCopyIntent(input: {
+    followerId: string;
+    sourcePositionId: string;
+    requestedQuantity: string;
+  }) {
+    const response = await this.request<{ copyTrade?: CopyTrade } | CopyTrade>("/copy-trades", {
+      method: "POST",
+      body: JSON.stringify({
+        followerId: input.followerId,
+        sourcePositionId: input.sourcePositionId,
+        requestedQuantity: input.requestedQuantity,
+      }),
+    });
+
+    return "copyTrade" in response && response.copyTrade
+      ? response.copyTrade
+      : (response as CopyTrade);
   }
 
   async listLeaderboard() {

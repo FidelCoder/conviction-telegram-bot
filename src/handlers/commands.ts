@@ -4,11 +4,16 @@ import {
   CoreApiError,
   type CoreApiClient,
   type Market,
+  type Position,
   type TelegramIdentity,
+  type TradeSignal,
 } from "../lib/core-api-client.js";
 
 const maxMarketsToShow = 10;
+const maxSignalsToShow = 10;
+const maxPositionsToShow = 10;
 const maxLeaderboardEntries = 10;
+const decimalAmountPattern = /^(?:0|[1-9]\d*)(?:\.\d{1,8})?$/;
 
 export function registerCommands(bot: Telegraf<Context>, coreApi: CoreApiClient) {
   bot.start(async (ctx) => {
@@ -105,6 +110,140 @@ export function registerCommands(bot: Telegraf<Context>, coreApi: CoreApiClient)
     }
   });
 
+  bot.command("signal", async (ctx) => {
+    const [marketId, rawSide, ...thesisParts] = getCommandParts(ctx);
+    const side = rawSide?.toUpperCase();
+    const thesis = thesisParts.join(" ").trim();
+
+    if (!marketId || !side || !thesis) {
+      await ctx.reply("Usage: /signal <marketId> <YES|NO> <thesis>");
+      return;
+    }
+
+    if (side !== "YES" && side !== "NO") {
+      await ctx.reply("Signal side must be YES or NO.");
+      return;
+    }
+
+    const identity = getTelegramIdentity(ctx);
+
+    if (!identity) {
+      await ctx.reply("I could not read your Telegram account from this chat.");
+      return;
+    }
+
+    try {
+      const session = await coreApi.createOrFetchTelegramUser(identity);
+
+      if (!session.traderProfile) {
+        await ctx.reply(
+          "Your Telegram user is connected, but no trader profile exists yet. Create a real trader profile through the core API before sending signals.",
+        );
+        return;
+      }
+
+      const signal = await coreApi.createTradeSignal({
+        traderProfileId: session.traderProfile.id,
+        marketId,
+        side,
+        thesis,
+      });
+
+      await ctx.reply(formatSignalCreated(signal));
+    } catch (error) {
+      await replyForCoreApiError(
+        ctx,
+        error,
+        "I could not create that signal through the core API.",
+      );
+    }
+  });
+
+  bot.command("signals", async (ctx) => {
+    const marketId = getCommandArgument(ctx);
+
+    if (!marketId) {
+      await ctx.reply("Usage: /signals <marketId>");
+      return;
+    }
+
+    try {
+      const signals = await coreApi.listMarketSignals(marketId);
+
+      if (signals.length === 0) {
+        await ctx.reply("No real signals have been created for this market yet.");
+        return;
+      }
+
+      await ctx.reply(formatSignals(signals));
+    } catch (error) {
+      await replyForCoreApiError(ctx, error, "I could not load signals from the core API.");
+    }
+  });
+
+  bot.command("copy", async (ctx) => {
+    const [positionId, amount] = getCommandParts(ctx);
+
+    if (!positionId || !amount) {
+      await ctx.reply("Usage: /copy <positionId> <amount>");
+      return;
+    }
+
+    if (!decimalAmountPattern.test(amount) || Number(amount) <= 0) {
+      await ctx.reply("Amount must be greater than zero with up to 8 decimal places.");
+      return;
+    }
+
+    const identity = getTelegramIdentity(ctx);
+
+    if (!identity) {
+      await ctx.reply("I could not read your Telegram account from this chat.");
+      return;
+    }
+
+    try {
+      const session = await coreApi.createOrFetchTelegramUser(identity);
+      const copyIntent = await coreApi.createCopyIntent({
+        followerId: session.user.id,
+        sourcePositionId: positionId,
+        requestedQuantity: amount,
+      });
+
+      await ctx.reply(
+        formatCopyIntent(copyIntent.status, copyIntent.id, copyIntent.requestedQuantity),
+      );
+    } catch (error) {
+      await replyForCoreApiError(
+        ctx,
+        error,
+        "I could not submit that copy intent through the core API.",
+      );
+    }
+  });
+
+  bot.command("positions", async (ctx) => {
+    const identity = getTelegramIdentity(ctx);
+
+    if (!identity) {
+      await ctx.reply("I could not read your Telegram account from this chat.");
+      return;
+    }
+
+    try {
+      const session = await coreApi.createOrFetchTelegramUser(identity);
+      const positions = await coreApi.listUserPositions(session.user.id);
+
+      if (positions.length === 0) {
+        await ctx.reply("No positions are available for your core API user yet.");
+        return;
+      }
+
+      await ctx.reply(formatPositions(positions));
+    } catch (error) {
+      await replyForCoreApiError(ctx, error, "I could not load positions from the core API.");
+    }
+  });
+
   bot.command("leaderboard", async (ctx) => {
     try {
       const leaderboard = await coreApi.listLeaderboard();
@@ -137,7 +276,17 @@ export function registerCommands(bot: Telegraf<Context>, coreApi: CoreApiClient)
 
   bot.help(async (ctx) => {
     await ctx.reply(
-      ["Commands", "/profile", "/markets", "/market <id>", "/leaderboard"].join("\n"),
+      [
+        "Commands",
+        "/profile",
+        "/markets",
+        "/market <id>",
+        "/signal <marketId> <YES|NO> <thesis>",
+        "/signals <marketId>",
+        "/copy <positionId> <amount>",
+        "/positions",
+        "/leaderboard",
+      ].join("\n"),
     );
   });
 }
@@ -160,10 +309,14 @@ function getTelegramIdentity(ctx: Context): TelegramIdentity | null {
 }
 
 function getCommandArgument(ctx: Context) {
+  return getCommandParts(ctx).join(" ").trim();
+}
+
+function getCommandParts(ctx: Context) {
   const text = ctx.message && "text" in ctx.message ? ctx.message.text : "";
   const [, ...parts] = text.trim().split(/\s+/);
 
-  return parts.join(" ").trim();
+  return parts;
 }
 
 function formatMarkets(markets: Market[]) {
@@ -179,6 +332,84 @@ function formatMarkets(markets: Market[]) {
 
   if (markets.length > maxMarketsToShow) {
     lines.push("", "Showing " + maxMarketsToShow + " of " + markets.length + " markets.");
+  }
+
+  return lines.join("\n");
+}
+
+function formatSignalCreated(signal: TradeSignal) {
+  return [
+    "Signal created",
+    "Signal ID: " + signal.id,
+    "Market ID: " + signal.marketId,
+    "Side: " + signal.side,
+    "Status: " + signal.status,
+    "Execution not yet enabled.",
+  ].join("\n");
+}
+
+function formatSignals(signals: TradeSignal[]) {
+  const lines = ["Signals"];
+
+  signals.slice(0, maxSignalsToShow).forEach((signal, index) => {
+    lines.push(
+      "",
+      index + 1 + ". " + signal.side + " - " + signal.status,
+      "ID: " + signal.id,
+      "Trader profile: " + signal.traderProfileId,
+      "Thesis: " + signal.thesis,
+    );
+  });
+
+  if (signals.length > maxSignalsToShow) {
+    lines.push("", "Showing " + maxSignalsToShow + " of " + signals.length + " signals.");
+  }
+
+  return lines.join("\n");
+}
+
+function formatPositions(positions: Position[]) {
+  const lines = ["Positions"];
+
+  positions.slice(0, maxPositionsToShow).forEach((position, index) => {
+    lines.push(
+      "",
+      index + 1 + ". " + position.side + " " + position.quantity,
+      "ID: " + position.id,
+      "Market ID: " + position.marketId,
+      "Status: " + position.status,
+    );
+
+    if (position.status === "PENDING_EXECUTION") {
+      lines.push("Execution not yet enabled.");
+    }
+
+    if (position.averageEntryPrice) {
+      lines.push("Entry price: " + position.averageEntryPrice);
+    }
+
+    if (position.observedMarketPrice) {
+      lines.push("Observed market price: " + position.observedMarketPrice);
+    }
+  });
+
+  if (positions.length > maxPositionsToShow) {
+    lines.push("", "Showing " + maxPositionsToShow + " of " + positions.length + " positions.");
+  }
+
+  return lines.join("\n");
+}
+
+function formatCopyIntent(status: string, id: string, requestedQuantity: string) {
+  const lines = [
+    "Copy intent submitted",
+    "Copy intent ID: " + id,
+    "Requested amount: " + requestedQuantity,
+    "Status: " + status,
+  ];
+
+  if (status !== "EXECUTED") {
+    lines.push("Execution not yet enabled.");
   }
 
   return lines.join("\n");
