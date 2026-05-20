@@ -250,7 +250,7 @@ export function registerCommands(bot: Telegraf<Context>, coreApi: CoreApiClient)
 
       if (!leaderboard || leaderboard.length === 0) {
         await ctx.reply(
-          "Leaderboard is not available yet. It will show real trader data once the core API exposes it.",
+          "Leaderboard has no entries yet. It will show real trader data once signals or copy intents exist.",
         );
         return;
       }
@@ -258,14 +258,25 @@ export function registerCommands(bot: Telegraf<Context>, coreApi: CoreApiClient)
       const lines = ["Leaderboard"];
       leaderboard.slice(0, maxLeaderboardEntries).forEach((entry, index) => {
         const rank = entry.rank ?? index + 1;
-        const name =
-          entry.handle ??
-          entry.displayName ??
-          entry.traderProfileId ??
-          entry.userId ??
-          "Unknown trader";
-        const score = entry.score === undefined || entry.score === null ? "" : " - " + entry.score;
-        lines.push(rank + ". " + name + score);
+        const copiedVolume = entry.copiedVolume ?? "0";
+        const executedVolume = entry.executedCopiedVolume
+          ? " | executed copied volume: " + entry.executedCopiedVolume
+          : "";
+        const pnl = entry.realizedPnl ? " | realized PnL: " + entry.realizedPnl : "";
+
+        lines.push(
+          rank +
+            ". " +
+            entry.handle +
+            " | signals: " +
+            entry.numberOfSignals +
+            " | copy intents: " +
+            entry.numberOfCopyIntents +
+            " | copied volume: " +
+            copiedVolume +
+            executedVolume +
+            pnl,
+        );
       });
 
       await ctx.reply(lines.join("\n"));

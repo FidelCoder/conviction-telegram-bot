@@ -55,12 +55,16 @@ export type Market = {
 };
 
 export type LeaderboardEntry = {
-  traderProfileId?: string;
-  userId?: string;
-  handle?: string;
-  displayName?: string | null;
-  score?: number | string | null;
-  rank?: number | null;
+  traderProfileId: string;
+  userId: string;
+  handle: string;
+  rank?: number;
+  numberOfSignals: number;
+  numberOfCopyIntents: number;
+  executedCopyIntentCount?: number;
+  copiedVolume: string;
+  executedCopiedVolume: string | null;
+  realizedPnl: string | null;
 };
 
 export type TradeSignal = {
