@@ -1,7 +1,10 @@
+import { createBot } from "./bot/index.js";
 import { config } from "./config/index.js";
 
-export function start(): void {
-  console.log(`conviction-telegram-bot ready in ${config.environment}`);
-}
+const bot = createBot(config);
 
-start();
+await bot.launch();
+console.log("conviction-telegram-bot running in " + config.environment);
+
+process.once("SIGINT", () => bot.stop("SIGINT"));
+process.once("SIGTERM", () => bot.stop("SIGTERM"));
