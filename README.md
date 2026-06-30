@@ -14,6 +14,8 @@ npm run dev
 
 Set `TELEGRAM_BOT_TOKEN` to a real bot token and `CORE_API_URL` to the same running Conviction Core API instance used by the Farcaster app. For the local demo, use `CORE_API_URL=http://localhost:3000`.
 
+Optional STON.fi/Omniston planning variables are included in `.env.example`. Keep `OMNISTON_ENABLED=false` and `OMNISTON_ROUTING_MODE=disabled` until quote-only integration is reviewed.
+
 ## Commands
 
 - `npm run dev` starts the Telegraf bot in long polling mode.
@@ -61,6 +63,12 @@ The bot expects the core API to own all product logic and persistence. Current c
 - `GET /leaderboard` for real leaderboard data from persisted signals and copy intents.
 
 The social account call should be idempotent and return a real user in the standard API response envelope. If a core endpoint is unavailable, the bot reports that cleanly instead of creating local fallback state.
+
+## STON.fi / Omniston Direction
+
+Conviction Markets should use Omniston as a Telegram-native liquidity route, not as a standalone trading engine inside the bot. The planned first implementation is quote-only: users can ask for a route before funding future Conviction actions, while wallet signing and swap submission remain disabled.
+
+See [docs/omniston-telegram-integration.md](docs/omniston-telegram-integration.md) for the scoped rollout, safety rules, and grant milestones.
 
 ## Demo Readiness
 
