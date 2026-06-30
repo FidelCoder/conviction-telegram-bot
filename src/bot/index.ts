@@ -10,7 +10,7 @@ export function createBot(config: BotConfig) {
   const coreApi = new CoreApiClient(config.coreApiUrl);
   const omnistonQuotes = new OmnistonQuoteService(config.omniston);
 
-  registerCommands(bot, coreApi, omnistonQuotes, config.convictionWebsiteUrl);
+  registerCommands(bot, coreApi, omnistonQuotes, config.convictionWebsiteUrl, config.omniston);
 
   bot.catch((error) => {
     console.error(error);

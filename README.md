@@ -33,6 +33,7 @@ Optional STON.fi/Omniston planning variables are included in `.env.example`. Kee
 - `/signal <marketId> <YES|NO> <thesis>` creates a real trade signal through the core API.
 - `/signals <marketId>` lists real signals for one market.
 - `/quote <from> <to> <amountUnits>` requests a quote-only Omniston route when enabled.
+- `/quote_status` shows Omniston quote config state without exposing secrets.
 - `/copy <positionId> <amount>` submits a copy intent through the core API.
 - `/positions` lists positions for the connected core API user.
 - `/leaderboard` shows real leaderboard data only when the core API exposes it.
@@ -57,7 +58,7 @@ Omniston quote examples:
 /quote USDT STON 1000000
 ```
 
-Quote amounts use token base units. The command returns an estimate only and does not build, sign, or submit a wallet transaction.
+Quote amounts use token base units. The command returns an estimate only and does not build, sign, or submit a wallet transaction. Use `/quote_status` to confirm whether the deployment is in `quote_only` mode before testing.
 
 ## Core API Contract
 
