@@ -32,6 +32,7 @@ Optional STON.fi/Omniston planning variables are included in `.env.example`. Kee
 - `/market <id>` shows one real market from the core API.
 - `/signal <marketId> <YES|NO> <thesis>` creates a real trade signal through the core API.
 - `/signals <marketId>` lists real signals for one market.
+- `/quote <from> <to> <amountUnits>` requests a quote-only Omniston route when enabled.
 - `/copy <positionId> <amount>` submits a copy intent through the core API.
 - `/positions` lists positions for the connected core API user.
 - `/leaderboard` shows real leaderboard data only when the core API exposes it.
@@ -48,6 +49,15 @@ Signal and copy examples:
 ```
 
 Signal responses say `Signal created`. Copy responses say `Copy intent submitted`. Pending copy or position records say `Execution not yet enabled`; the bot does not simulate balances or execution.
+
+Omniston quote examples:
+
+```text
+/quote TON USDT 1000000000
+/quote USDT STON 1000000
+```
+
+Quote amounts use token base units. The command returns an estimate only and does not build, sign, or submit a wallet transaction.
 
 ## Core API Contract
 
@@ -66,7 +76,7 @@ The social account call should be idempotent and return a real user in the stand
 
 ## STON.fi / Omniston Direction
 
-Conviction Markets should use Omniston as a Telegram-native liquidity route, not as a standalone trading engine inside the bot. The planned first implementation is quote-only: users can ask for a route before funding future Conviction actions, while wallet signing and swap submission remain disabled.
+Conviction Markets should use Omniston as a Telegram-native liquidity route, not as a standalone trading engine inside the bot. The first implementation is quote-only: users can ask for a route before funding future Conviction actions, while wallet signing and swap submission remain disabled.
 
 See [docs/omniston-telegram-integration.md](docs/omniston-telegram-integration.md) for the scoped rollout, safety rules, and grant milestones.
 

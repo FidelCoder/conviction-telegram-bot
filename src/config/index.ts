@@ -13,6 +13,8 @@ export type OmnistonConfig = {
   enabled: boolean;
   network: "mainnet" | "testnet";
   routingMode: "disabled" | "quote_only" | "swap_intent";
+  apiUrl: string;
+  quoteTimeoutMs: number;
 };
 
 export const config: BotConfig = {
@@ -29,6 +31,8 @@ export const config: BotConfig = {
       ["disabled", "quote_only", "swap_intent"],
       "disabled",
     ),
+    apiUrl: optionalUrlEnv("OMNISTON_API_URL", defaultOmnistonApiUrl()),
+    quoteTimeoutMs: numberEnv("OMNISTON_QUOTE_TIMEOUT_MS", 8_000),
   },
 };
 
@@ -90,4 +94,30 @@ function enumEnv<const T extends readonly string[]>(name: string, values: T, fal
   }
 
   throw new Error(name + " must be one of: " + values.join(", "));
+}
+
+function defaultOmnistonApiUrl() {
+  return configNetworkEnv() === "testnet"
+    ? "wss://omni-ws-sandbox.ston.fi"
+    : "wss://omni-ws.ston.fi";
+}
+
+function configNetworkEnv() {
+  return enumEnv("OMNISTON_NETWORK", ["mainnet", "testnet"], "mainnet");
+}
+
+function numberEnv(name: string, fallback: number) {
+  const value = process.env[name]?.trim();
+
+  if (!value) {
+    return fallback;
+  }
+
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(name + " must be a positive number");
+  }
+
+  return parsed;
 }

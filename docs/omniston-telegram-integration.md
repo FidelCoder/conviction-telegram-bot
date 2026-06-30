@@ -15,11 +15,11 @@ This is stronger than a visibility-only widget because it creates repeatable Tel
 
 ## First Integration Scope
 
-The first implementation task should be quote-only:
+The first implementation task is quote-only:
 
 1. Add the exact `@ston-fi/omniston-sdk` version.
 2. Add an Omniston service module that can request quotes without submitting transactions.
-3. Add a Telegram command such as `/quote <from> <to> <amount>`.
+3. Add `/quote <from> <to> <amountUnits>` for TON assets.
 4. Return quote output with route, estimated receive amount, and risk disclaimers.
 5. Keep swap submission disabled until wallet signing, transaction preview, and limited-funds validation are reviewed.
 
@@ -30,9 +30,24 @@ The Telegram bot reads these environment variables:
 - `OMNISTON_ENABLED`: defaults to `false`.
 - `OMNISTON_NETWORK`: `mainnet` or `testnet`; defaults to `mainnet`.
 - `OMNISTON_ROUTING_MODE`: `disabled`, `quote_only`, or `swap_intent`; defaults to `disabled`.
+- `OMNISTON_API_URL`: defaults to `wss://omni-ws.ston.fi`, or `wss://omni-ws-sandbox.ston.fi` when `OMNISTON_NETWORK=testnet`.
+- `OMNISTON_QUOTE_TIMEOUT_MS`: quote stream timeout; defaults to `8000`.
 - `CONVICTION_WEBSITE_URL`: public product URL used in Telegram responses.
 
 `OMNISTON_ENABLED=false` or `OMNISTON_ROUTING_MODE=disabled` means no Omniston commands should send quote or swap requests.
+
+## Quote Command
+
+`/quote <from> <to> <amountUnits>` requests a live Omniston RFQ stream and returns the first available quote. The current aliases are `TON`, `USDT`, and `STON`; raw TON jetton addresses are also accepted.
+
+Examples:
+
+```text
+/quote TON USDT 1000000000
+/quote USDT STON 1000000
+```
+
+The command is intentionally quote-only. It does not call `tonBuildSwap`, `tonBuildEscrowTransfer`, `evmBuildOrderPayload`, tracking APIs, wallet signing, or transaction submission.
 
 ## Safety Rules
 
