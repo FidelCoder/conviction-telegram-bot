@@ -51,6 +51,16 @@ The command is intentionally quote-only. It does not call `tonBuildSwap`, `tonBu
 
 Use `/quote_status` in Telegram to confirm enabled state, network, API URL, routing mode, and timeout before running live quote tests.
 
+The bot records one terminal quote metric in Conviction Core API for every accepted command:
+
+- `QUOTED` when Omniston returns a quote.
+- `NO_QUOTE` when Omniston returns no route.
+- `TIMEOUT` when the stream times out.
+- `DISABLED` when the deployment is not in quote-only mode.
+- `FAILED` for validation or unexpected quote errors.
+
+Core metrics are available through `GET /omniston/quote-events` and `GET /omniston/quote-summary`.
+
 ## Safety Rules
 
 Omniston routes digital assets. Bugs, wrong token addresses, wrong network selection, bad signing flow, or user misuse can cause irreversible loss of funds.

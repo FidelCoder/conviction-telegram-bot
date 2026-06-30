@@ -58,7 +58,9 @@ Omniston quote examples:
 /quote USDT STON 1000000
 ```
 
-Quote amounts use token base units. The command returns an estimate only and does not build, sign, or submit a wallet transaction. Use `/quote_status` to confirm whether the deployment is in `quote_only` mode before testing.
+Quote amounts use token base units. For known assets such as TON, USDT, and STON, the reply also shows readable display amounts. The command returns an estimate only and does not build, sign, or submit a wallet transaction. Use `/quote_status` to confirm whether the deployment is in `quote_only` mode before testing.
+
+Each accepted `/quote` attempt records one terminal status in the core API through `POST /omniston/quote-events`: `QUOTED`, `NO_QUOTE`, `TIMEOUT`, `DISABLED`, or `FAILED`. Metrics failures are logged by the bot and do not block the Telegram user.
 
 ## Core API Contract
 
@@ -72,6 +74,8 @@ The bot expects the core API to own all product logic and persistence. Current c
 - `GET /users/:userId/positions` for connected-user positions.
 - `POST /copy-trades` to submit a copy intent.
 - `GET /leaderboard` for real leaderboard data from persisted signals and copy intents.
+- `POST /omniston/quote-events` for quote-only Omniston usage metrics.
+- `GET /omniston/quote-summary` for grant and community reporting metrics.
 
 The social account call should be idempotent and return a real user in the standard API response envelope. If a core endpoint is unavailable, the bot reports that cleanly instead of creating local fallback state.
 
