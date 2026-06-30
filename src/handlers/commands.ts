@@ -1,5 +1,7 @@
 import type { Context, Telegraf } from "telegraf";
 
+import type { OmnistonConfig } from "../config/index.js";
+
 import {
   CoreApiError,
   type CoreApiClient,
@@ -29,6 +31,7 @@ export function registerCommands(
   coreApi: CoreApiClient,
   omnistonQuotes?: OmnistonQuoteService,
   websiteUrl = "https://convictionmarkets.xyz",
+  omnistonConfig?: OmnistonConfig,
 ) {
   bot.start(async (ctx) => {
     const identity = getTelegramIdentity(ctx);
@@ -122,6 +125,15 @@ export function registerCommands(
 
       await replyForCoreApiError(ctx, error, "I could not load that market from the core API.");
     }
+  });
+
+  bot.command("quote_status", async (ctx) => {
+    if (!omnistonConfig) {
+      await ctx.reply("Omniston quote config is not loaded on this bot deployment.");
+      return;
+    }
+
+    await ctx.reply(formatOmnistonQuoteStatus(omnistonConfig));
   });
 
   bot.command("quote", async (ctx) => {
@@ -343,6 +355,7 @@ export function registerCommands(
         "/signal <marketId> <YES|NO> <thesis>",
         "/signals <marketId>",
         "/quote <from> <to> <amountUnits>",
+        "/quote_status",
         "/copy <positionId> <amount>",
         "/positions",
         "/leaderboard",
@@ -517,6 +530,19 @@ async function replyForCoreApiError(ctx: Context, error: unknown, message: strin
 
   console.error(error);
   await ctx.reply(message + "\nPlease try again later.");
+}
+
+function formatOmnistonQuoteStatus(config: OmnistonConfig) {
+  return [
+    "Omniston quote status",
+    "Enabled: " + (config.enabled ? "yes" : "no"),
+    "Network: " + config.network,
+    "Routing mode: " + config.routingMode,
+    "API: " + config.apiUrl,
+    "Timeout: " + config.quoteTimeoutMs + "ms",
+    "Quote command: " +
+      (config.enabled && config.routingMode === "quote_only" ? "ready" : "disabled"),
+  ].join("\n");
 }
 
 function formatOmnistonQuote(result: OmnistonQuoteResult, websiteUrl: string) {

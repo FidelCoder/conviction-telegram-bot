@@ -49,6 +49,8 @@ Examples:
 
 The command is intentionally quote-only. It does not call `tonBuildSwap`, `tonBuildEscrowTransfer`, `evmBuildOrderPayload`, tracking APIs, wallet signing, or transaction submission.
 
+Use `/quote_status` in Telegram to confirm enabled state, network, API URL, routing mode, and timeout before running live quote tests.
+
 ## Safety Rules
 
 Omniston routes digital assets. Bugs, wrong token addresses, wrong network selection, bad signing flow, or user misuse can cause irreversible loss of funds.
