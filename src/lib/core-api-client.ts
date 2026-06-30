@@ -36,6 +36,38 @@ export type TelegramUserSession = {
   traderProfile: TraderProfile | null;
 };
 
+export type OmnistonQuoteEventStatus =
+  | "REQUESTED"
+  | "QUOTED"
+  | "NO_QUOTE"
+  | "FAILED"
+  | "TIMEOUT"
+  | "DISABLED";
+
+export type OmnistonQuoteEvent = {
+  id: string;
+  userId: string | null;
+  platform: "TELEGRAM" | "FARCASTER";
+  platformUserId: string | null;
+  username: string | null;
+  source: string;
+  fromAsset: string;
+  toAsset: string;
+  amountUnits: string;
+  status: OmnistonQuoteEventStatus;
+  inputUnits: string | null;
+  outputUnits: string | null;
+  settlement: string | null;
+  resolverName: string | null;
+  quoteId: string | null;
+  gasBudget: string | null;
+  routeCount: number | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type Market = {
   id: string;
   externalMarketId: string;
@@ -169,6 +201,42 @@ export class CoreApiClient {
     });
 
     return normalizeTelegramUserSession(session);
+  }
+
+  async recordOmnistonQuoteEvent(input: {
+    userId?: string | null;
+    platformUserId?: string | null;
+    username?: string | null;
+    fromAsset: string;
+    toAsset: string;
+    amountUnits: string;
+    status: OmnistonQuoteEventStatus;
+    inputUnits?: string | null;
+    outputUnits?: string | null;
+    settlement?: string | null;
+    resolverName?: string | null;
+    quoteId?: string | null;
+    gasBudget?: string | null;
+    routeCount?: number | null;
+    errorCode?: string | null;
+    errorMessage?: string | null;
+    metadata?: Record<string, string | number | boolean | null> | null;
+  }) {
+    const response = await this.request<{ event?: OmnistonQuoteEvent } | OmnistonQuoteEvent>(
+      "/omniston/quote-events",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          platform: "TELEGRAM",
+          source: "TELEGRAM_BOT",
+          ...input,
+        }),
+      },
+    );
+
+    return "event" in response && response.event
+      ? response.event
+      : (response as OmnistonQuoteEvent);
   }
 
   async listMarkets() {

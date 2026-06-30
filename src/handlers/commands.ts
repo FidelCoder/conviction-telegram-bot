@@ -6,6 +6,7 @@ import {
   CoreApiError,
   type CoreApiClient,
   type Market,
+  type OmnistonQuoteEventStatus,
   type Position,
   type TelegramIdentity,
   type TradeSignal,
@@ -157,15 +158,48 @@ export function registerCommands(
       return;
     }
 
+    const identity = getTelegramIdentity(ctx);
+    const session = identity ? await createTelegramSessionSafely(coreApi, identity) : null;
+
     if (!omnistonQuotes) {
+      await recordQuoteEventSafely(coreApi, identity, session, {
+        fromAsset,
+        toAsset,
+        amountUnits,
+        status: "DISABLED",
+        errorCode: "OMNISTON_SERVICE_MISSING",
+        errorMessage: "Omniston quote service is not configured on this deployment.",
+      });
       await ctx.reply("Omniston quote routing is not configured on this bot deployment yet.");
       return;
     }
 
     try {
       const result = await omnistonQuotes.requestQuote({ fromAsset, toAsset, amountUnits });
+      await recordQuoteEventSafely(coreApi, identity, session, {
+        fromAsset,
+        toAsset,
+        amountUnits,
+        status: "QUOTED",
+        inputUnits: result.quote.inputUnits,
+        outputUnits: result.quote.outputUnits,
+        settlement: result.settlement,
+        resolverName: result.quote.resolverName,
+        quoteId: result.quote.quoteId,
+        gasBudget: result.quote.gasBudget ?? null,
+        routeCount:
+          result.quote.settlementData.$case === "swap"
+            ? result.quote.settlementData.value.routes.length
+            : null,
+      });
       await ctx.reply(formatOmnistonQuote(result, websiteUrl));
     } catch (error) {
+      await recordQuoteEventSafely(coreApi, identity, session, {
+        fromAsset,
+        toAsset,
+        amountUnits,
+        ...quoteEventErrorFields(error),
+      });
       await replyForOmnistonQuoteError(ctx, error);
     }
   });
@@ -521,6 +555,95 @@ function formatMarket(market: Market) {
   return lines.join("\n");
 }
 
+type QuoteEventSession = Awaited<ReturnType<CoreApiClient["createOrFetchTelegramUser"]>> | null;
+
+type QuoteEventInput = {
+  fromAsset: string;
+  toAsset: string;
+  amountUnits: string;
+  status: OmnistonQuoteEventStatus;
+  inputUnits?: string | null;
+  outputUnits?: string | null;
+  settlement?: string | null;
+  resolverName?: string | null;
+  quoteId?: string | null;
+  gasBudget?: string | null;
+  routeCount?: number | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+};
+
+async function createTelegramSessionSafely(coreApi: CoreApiClient, identity: TelegramIdentity) {
+  try {
+    return await coreApi.createOrFetchTelegramUser(identity);
+  } catch (error) {
+    console.error("[core-api] could not link Telegram quote user", error);
+    return null;
+  }
+}
+
+async function recordQuoteEventSafely(
+  coreApi: CoreApiClient,
+  identity: TelegramIdentity | null,
+  session: QuoteEventSession,
+  input: QuoteEventInput,
+) {
+  try {
+    await coreApi.recordOmnistonQuoteEvent({
+      userId: session?.user.id ?? null,
+      platformUserId: identity ? String(identity.id) : null,
+      username: identity?.username ?? null,
+      ...input,
+    });
+  } catch (error) {
+    console.error("[core-api] could not record Omniston quote event", error);
+  }
+}
+
+function quoteEventErrorFields(error: unknown): {
+  status: OmnistonQuoteEventStatus;
+  errorCode: string;
+  errorMessage: string;
+} {
+  if (error instanceof OmnistonQuoteDisabledError) {
+    return {
+      status: "DISABLED",
+      errorCode: "OMNISTON_DISABLED",
+      errorMessage: error.message,
+    };
+  }
+
+  if (error instanceof OmnistonNoQuoteError) {
+    return {
+      status: "NO_QUOTE",
+      errorCode: "OMNISTON_NO_QUOTE",
+      errorMessage: error.message,
+    };
+  }
+
+  if (error instanceof OmnistonQuoteTimeoutError) {
+    return {
+      status: "TIMEOUT",
+      errorCode: "OMNISTON_TIMEOUT",
+      errorMessage: error.message,
+    };
+  }
+
+  if (error instanceof OmnistonQuoteInputError) {
+    return {
+      status: "FAILED",
+      errorCode: "OMNISTON_INPUT_ERROR",
+      errorMessage: error.message,
+    };
+  }
+
+  return {
+    status: "FAILED",
+    errorCode: error instanceof Error ? error.name : "OMNISTON_UNKNOWN_ERROR",
+    errorMessage: error instanceof Error ? error.message : "Unknown quote error.",
+  };
+}
+
 async function replyForCoreApiError(ctx: Context, error: unknown, message: string) {
   if (error instanceof CoreApiError) {
     console.error("[core-api] " + error.code + ": " + error.message);
@@ -550,8 +673,8 @@ function formatOmnistonQuote(result: OmnistonQuoteResult, websiteUrl: string) {
   const lines = [
     "Omniston quote",
     result.inputSymbol + " -> " + result.outputSymbol,
-    "Input units: " + quote.inputUnits,
-    "Estimated output units: " + quote.outputUnits,
+    "Input: " + formatQuoteAmount(quote.inputUnits, result.inputSymbol),
+    "Estimated output: " + formatQuoteAmount(quote.outputUnits, result.outputSymbol),
     "Settlement: " + result.settlement,
     "Resolver: " + quote.resolverName,
     "Quote ID: " + quote.quoteId,
@@ -563,12 +686,41 @@ function formatOmnistonQuote(result: OmnistonQuoteResult, websiteUrl: string) {
 
   if (quote.settlementData.$case === "swap") {
     lines.push("Routes: " + quote.settlementData.value.routes.length);
-    lines.push("Recommended min output: " + quote.settlementData.value.recommendedMinOutputAmount);
+    lines.push(
+      "Recommended min output: " +
+        formatQuoteAmount(
+          quote.settlementData.value.recommendedMinOutputAmount,
+          result.outputSymbol,
+        ),
+    );
   }
 
   lines.push("", "Quote only. No wallet transaction was built or submitted.", websiteUrl);
 
   return lines.join("\n");
+}
+
+const quoteAssetDecimals: Record<string, number> = {
+  STON: 9,
+  TON: 9,
+  USDT: 6,
+};
+
+function formatQuoteAmount(units: string, symbol: string) {
+  const decimals = quoteAssetDecimals[symbol.toUpperCase()];
+
+  if (decimals === undefined) {
+    return units + " units";
+  }
+
+  const value = BigInt(units);
+  const scale = 10n ** BigInt(decimals);
+  const whole = value / scale;
+  const fraction = value % scale;
+  const fractionText = fraction.toString().padStart(decimals, "0").replace(/0+$/, "");
+  const displayFraction = fractionText ? "." + fractionText.slice(0, 6) : "";
+
+  return whole.toString() + displayFraction + " " + symbol + " (" + units + " units)";
 }
 
 async function replyForOmnistonQuoteError(ctx: Context, error: unknown) {
