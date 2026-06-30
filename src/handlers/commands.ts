@@ -8,14 +8,28 @@ import {
   type TelegramIdentity,
   type TradeSignal,
 } from "../lib/core-api-client.js";
+import {
+  OmnistonNoQuoteError,
+  OmnistonQuoteDisabledError,
+  OmnistonQuoteInputError,
+  type OmnistonQuoteResult,
+  type OmnistonQuoteService,
+  OmnistonQuoteTimeoutError,
+} from "../lib/omniston-quote-service.js";
 
 const maxMarketsToShow = 10;
 const maxSignalsToShow = 10;
 const maxPositionsToShow = 10;
 const maxLeaderboardEntries = 10;
 const decimalAmountPattern = /^(?:0|[1-9]\d*)(?:\.\d{1,8})?$/;
+const integerUnitsPattern = /^(?:0|[1-9]\d*)$/;
 
-export function registerCommands(bot: Telegraf<Context>, coreApi: CoreApiClient) {
+export function registerCommands(
+  bot: Telegraf<Context>,
+  coreApi: CoreApiClient,
+  omnistonQuotes?: OmnistonQuoteService,
+  websiteUrl = "https://convictionmarkets.xyz",
+) {
   bot.start(async (ctx) => {
     const identity = getTelegramIdentity(ctx);
 
@@ -107,6 +121,40 @@ export function registerCommands(bot: Telegraf<Context>, coreApi: CoreApiClient)
       }
 
       await replyForCoreApiError(ctx, error, "I could not load that market from the core API.");
+    }
+  });
+
+  bot.command("quote", async (ctx) => {
+    const [fromAsset, toAsset, amountUnits] = getCommandParts(ctx);
+
+    if (!fromAsset || !toAsset || !amountUnits) {
+      await ctx.reply(
+        [
+          "Usage: /quote <from> <to> <amountUnits>",
+          "Examples:",
+          "/quote TON USDT 1000000000",
+          "/quote USDT STON 1000000",
+          "Amounts are base units, not display decimals.",
+        ].join("\n"),
+      );
+      return;
+    }
+
+    if (!integerUnitsPattern.test(amountUnits) || BigInt(amountUnits) <= 0n) {
+      await ctx.reply("Amount must be positive integer base units, for example 1000000.");
+      return;
+    }
+
+    if (!omnistonQuotes) {
+      await ctx.reply("Omniston quote routing is not configured on this bot deployment yet.");
+      return;
+    }
+
+    try {
+      const result = await omnistonQuotes.requestQuote({ fromAsset, toAsset, amountUnits });
+      await ctx.reply(formatOmnistonQuote(result, websiteUrl));
+    } catch (error) {
+      await replyForOmnistonQuoteError(ctx, error);
     }
   });
 
@@ -294,6 +342,7 @@ export function registerCommands(bot: Telegraf<Context>, coreApi: CoreApiClient)
         "/market <id>",
         "/signal <marketId> <YES|NO> <thesis>",
         "/signals <marketId>",
+        "/quote <from> <to> <amountUnits>",
         "/copy <positionId> <amount>",
         "/positions",
         "/leaderboard",
@@ -468,4 +517,52 @@ async function replyForCoreApiError(ctx: Context, error: unknown, message: strin
 
   console.error(error);
   await ctx.reply(message + "\nPlease try again later.");
+}
+
+function formatOmnistonQuote(result: OmnistonQuoteResult, websiteUrl: string) {
+  const { quote } = result;
+  const lines = [
+    "Omniston quote",
+    result.inputSymbol + " -> " + result.outputSymbol,
+    "Input units: " + quote.inputUnits,
+    "Estimated output units: " + quote.outputUnits,
+    "Settlement: " + result.settlement,
+    "Resolver: " + quote.resolverName,
+    "Quote ID: " + quote.quoteId,
+  ];
+
+  if (quote.gasBudget) {
+    lines.push("Gas budget: " + quote.gasBudget);
+  }
+
+  if (quote.settlementData.$case === "swap") {
+    lines.push("Routes: " + quote.settlementData.value.routes.length);
+    lines.push("Recommended min output: " + quote.settlementData.value.recommendedMinOutputAmount);
+  }
+
+  lines.push("", "Quote only. No wallet transaction was built or submitted.", websiteUrl);
+
+  return lines.join("\n");
+}
+
+async function replyForOmnistonQuoteError(ctx: Context, error: unknown) {
+  if (error instanceof OmnistonQuoteDisabledError) {
+    await ctx.reply(
+      "Omniston quotes are disabled on this deployment. Set OMNISTON_ENABLED=true and OMNISTON_ROUTING_MODE=quote_only to test quotes.",
+    );
+    return;
+  }
+
+  if (error instanceof OmnistonQuoteInputError) {
+    await ctx.reply(error.message);
+    return;
+  }
+
+  if (error instanceof OmnistonNoQuoteError || error instanceof OmnistonQuoteTimeoutError) {
+    await ctx.reply(error.message);
+    return;
+  }
+
+  console.error(error);
+  await ctx.reply("I could not fetch an Omniston quote right now. Please try again later.");
 }
